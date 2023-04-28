@@ -1,0 +1,4 @@
+{
+    "MongoUri" : "mongodb://127.0.0.1:27017/?retryWrites=true&w=majority",
+    "GrpcUri" : "127.0.0.1:4317"
+}

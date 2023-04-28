@@ -3,7 +3,7 @@ package httptransport
 import (
 	"log"
 	"net/http"
-	jwttoken "notemaking/jwtToken"
+	jwttoken "notemaking/jwttoken"
 	"notemaking/notes"
 )
 

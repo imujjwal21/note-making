@@ -10,4 +10,5 @@ type User struct {
 type UserDataStore interface {
 	Register(ctx context.Context, email, password string) error
 	Login(ctx context.Context, email, password string) error
+	CheckEmailExits(ctx context.Context, email string) error
 }

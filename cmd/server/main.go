@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"notemaking/internal/httptransport"
 	"notemaking/mongo"
@@ -18,62 +17,29 @@ import (
 	"notemaking/users"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
-func initProvider(ctx context.Context) (func(context.Context) error, error) {
-
-	res, err := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName("test-service"),
-			semconv.ServiceNameKey.String("notemaking"),
-			semconv.ServiceVersion("1.9"),
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "127.0.0.1:4317",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
-	}
-
-	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
-	}
-
-	bsp := sdktrace.NewBatchSpanProcessor(traceExporter)
-	tracerProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(bsp),
-	)
-	otel.SetTracerProvider(tracerProvider)
-
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-
-	return tracerProvider.Shutdown, nil
+type UriInformation struct {
+	MongoUri string
+	GrpcUri  string
 }
 
 func main() {
 
-	client := mongo.ConnectDB()
+	ctx := context.Background()
+
+	UriInformation, err := getAllUri()
+	if err != nil {
+		log.Printf("Uri information file reading error : %v", err)
+	}
+
+	client, err := mongo.ConnectDB(UriInformation.MongoUri)
+	if err != nil {
+		log.Printf("cannot connect to database : %v", err)
+	}
 
 	defer func() {
-		err := client.Disconnect(context.TODO())
+		err := client.Disconnect(ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -81,7 +47,7 @@ func main() {
 
 	coll := client.Database("notemaking")
 
-	// kafka.CreateTopic()
+	// kafka.CreateTopic()   sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	var port int
 
@@ -90,10 +56,12 @@ func main() {
 
 	server := &http.Server{Handler: httptransport.NewHandler(users.NewInUserDatabase(coll), notes.NewInNoteDatabase(coll))}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	// start collector
+
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
-	shutdown, err := initProvider(ctx)
+	shutdown, err := initProvider(ctx, UriInformation.GrpcUri)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -104,6 +72,8 @@ func main() {
 	}()
 
 	otel.Tracer("test-tracer")
+
+	// end collector
 
 	go func() {
 		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))

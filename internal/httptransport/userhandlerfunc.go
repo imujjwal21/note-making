@@ -3,7 +3,7 @@ package httptransport
 import (
 	"log"
 	"net/http"
-	jwttoken "notemaking/jwtToken"
+	jwttoken "notemaking/jwttoken"
 	"notemaking/users"
 	"time"
 )
@@ -39,7 +39,8 @@ func registerPostHandler(storage users.UserDataStore) http.HandlerFunc {
 
 		if err != nil {
 			log.Printf("cannot able Created Account : %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			// w.WriteHeader(http.StatusInternalServerError)
+			http.Redirect(w, r, "/register", 302)
 			return
 		}
 
